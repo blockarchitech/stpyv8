@@ -44,14 +44,15 @@ source_files = [
     "Locker.cpp",
     "Utils.cpp",
     "STPyV8.cpp",
+    "Inspector.cpp"
 ]
 
 
 macros = [("BOOST_PYTHON_STATIC_LIB", None)]
 include_dirs = set()
 library_dirs = set()
-libraries = []
-extra_compile_args = []
+libraries = ['v8_inspector']
+extra_compile_args = ['-DENABLE_INSPECTOR=1']
 extra_link_args = []
 
 include_dirs.add(os.path.join(V8_HOME, "include"))

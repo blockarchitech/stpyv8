@@ -36,7 +36,6 @@ __all__ = [
     "JSPlatform",
 ]
 
-
 # ICU
 ICU_DATA_FOLDERS_UNIX = (
     "/usr/share/stpyv8",
@@ -375,10 +374,11 @@ class JSContext(_STPyV8.JSContext):
 
 
 def icu_sync():
-    if sys.version_info < (3, 10):
-        from importlib_resources import files
-    else:
-        from importlib.resources import files
+    # if sys.version_info < (3, 10):
+    #     from importlib_resources import files
+    # else:
+    #     from importlib.resources import files
+    from importlib.resources import files
 
     for folder in icu_data_folders:
         if not folder or not os.path.exists(folder):

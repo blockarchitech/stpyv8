@@ -1,8 +1,18 @@
 #include "Context.h"
+#include "Inspector.h"
+
 #include "Wrapper.h"
 #include "Engine.h"
 
 #include "libplatform/libplatform.h"
+
+CContext::~CContext()
+{
+    if (m_inspector) {
+        m_inspector->DisconnectDebugger();
+    }
+    m_context.Reset();
+}
 
 void CContext::Expose(void)
 {
@@ -65,6 +75,13 @@ void CContext::Expose(void)
          "Exiting the current context restores the context "
          "that was in place when entering the current context.")
 
+    .def("init_debugger", &CContext::InitDebugger, (py::arg("port") = 9229),
+         "Initialize the V8 Inspector debugger on the specified port")
+    .def("disconnect_debugger", &CContext::DisconnectDebugger,
+         "Disconnect the V8 Inspector debugger")
+    .def("send_debugger_message", &CContext::SendDebuggerMessage,
+         "Send a message to the V8 Inspector debugger")
+
     .def("__bool__", &CContext::IsEntered, "the context has been entered.")
     ;
 
@@ -82,21 +99,22 @@ void CContext::Expose(void)
 }
 
 CContext::CContext(v8::Handle<v8::Context> context)
+    : m_inspector(nullptr)
 {
     v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
-
     m_context.Reset(context->GetIsolate(), context);
 }
 
 CContext::CContext(const CContext& context)
+    : m_inspector(nullptr)
 {
     v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
-
     m_context.Reset(context.Handle()->GetIsolate(), context.Handle());
 }
 
 CContext::CContext(py::object global)
     : m_global(global)
+    , m_inspector(nullptr)
 {
     v8::Isolate* isolate = v8::Isolate::GetCurrent();
     v8::HandleScope handle_scope(isolate);
@@ -114,7 +132,7 @@ CContext::CContext(py::object global)
                                     v8::String::NewFromUtf8(isolate, "__proto__").ToLocalChecked(),
                                     CPythonObject::Wrap(global));
         if(retcode.IsNothing()) {
-            //TODO we need to do something if the set call failed
+            // TODO we need to do something if the set call failed
         }
 
         Py_DECREF(global.ptr());
@@ -124,7 +142,6 @@ CContext::CContext(py::object global)
 py::object CContext::GetGlobal(void)
 {
     v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
-
     return CJavascriptObject::Wrap(Handle()->Global());
 }
 
@@ -169,8 +186,14 @@ py::object CContext::GetEntered(void)
 
     v8::Handle<v8::Context> entered = isolate->GetEnteredOrMicrotaskContext();
 
-    return (entered.IsEmpty()) ? py::object() :
-           py::object(py::handle<>(boost::python::converter::shared_ptr_to_python<CContext>(CContextPtr(new CContext(entered)))));
+    if (entered.IsEmpty())
+        return py::object();
+
+    return py::object(py::handle<>(
+        boost::python::converter::shared_ptr_to_python<CContext>(
+            std::make_shared<CContext>(entered)
+        )
+    ));
 }
 
 py::object CContext::GetCurrent(void)
@@ -183,8 +206,14 @@ py::object CContext::GetCurrent(void)
 
     v8::Handle<v8::Context> current = isolate->GetCurrentContext();
 
-    return (current.IsEmpty()) ? py::object() :
-           py::object(py::handle<>(boost::python::converter::shared_ptr_to_python<CContext>(CContextPtr(new CContext(current)))));
+    if (current.IsEmpty())
+        return py::object();
+
+    return py::object(py::handle<>(
+        boost::python::converter::shared_ptr_to_python<CContext>(
+            std::make_shared<CContext>(current)
+        )
+    ));
 }
 
 py::object CContext::GetCalling(void)
@@ -198,28 +227,81 @@ py::object CContext::GetCalling(void)
 
     v8::Handle<v8::Context> calling = isolate->GetCurrentContext();
 
-    return (calling.IsEmpty()) ? py::object() :
-           py::object(py::handle<>(boost::python::converter::shared_ptr_to_python<CContext>(CContextPtr(new CContext(calling)))));
+    if (calling.IsEmpty())
+        return py::object();
+
+    return py::object(py::handle<>(
+        boost::python::converter::shared_ptr_to_python<CContext>(
+            std::make_shared<CContext>(calling)
+        )
+    ));
+}
+
+void CContext::InitDebugger(int port)
+{
+    v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
+    v8::Local<v8::Context> context = Handle();
+    v8::Context::Scope context_scope(context);
+
+    if (!m_inspector) {
+        m_inspector = std::make_unique<STPyV8::Inspector>(
+            v8::Isolate::GetCurrent(),
+            context
+        );
+        m_inspector->ConnectDebugger(port);
+    }
+}
+
+void CContext::DisconnectDebugger()
+{
+    v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
+    if (m_inspector) {
+        m_inspector->DisconnectDebugger();
+        m_inspector.reset();
+    }
+}
+
+void CContext::SendDebuggerMessage(const std::string& message)
+{
+    v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
+    if (m_inspector) {
+        m_inspector->SendMessage(message);
+    }
+}
+
+std::string CContext::get_debugger_message() {
+    if (m_inspector) {
+        return m_inspector->GetNextMessage();
+    }
+    return "";
 }
 
 py::object CContext::Evaluate(const std::string& src,
-                              const std::string name,
-                              int line, int col)
+                            const std::string name,
+                            int line, int col)
 {
     CEngine engine(v8::Isolate::GetCurrent());
-
     CScriptPtr script = engine.Compile(src, name, line, col);
+    if (!script) {
+        return py::object();
+    }
 
-    return script->Run();
+    v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
+    v8::Local<v8::Script> local_script = script->Script();
+    return engine.ExecuteScript(local_script);
 }
 
 py::object CContext::EvaluateW(const std::wstring& src,
-                               const std::wstring name,
-                               int line, int col)
+                             const std::wstring name,
+                             int line, int col)
 {
     CEngine engine(v8::Isolate::GetCurrent());
-
     CScriptPtr script = engine.CompileW(src, name, line, col);
+    if (!script) {
+        return py::object();
+    }
 
-    return script->Run();
+    v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
+    v8::Local<v8::Script> local_script = script->Script();
+    return engine.ExecuteScript(local_script);
 }

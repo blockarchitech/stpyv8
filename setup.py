@@ -129,7 +129,7 @@ def checkout_v8():
         and v8_deps_linux
     ):
         success, _, __ = exec_cmd(
-            "./v8/build/install-build-deps.sh",
+            "./v8/build/install-build-deps.sh --unsupported",
             cwd=os.path.dirname(V8_HOME),
             msg="Installing additional linux dependencies",
         )

@@ -4,6 +4,9 @@
 
 #include "Exception.h"
 
+class CIsolate;
+typedef std::shared_ptr<CIsolate> CIsolatePtr;
+
 class CIsolate
 {
     v8::Isolate *m_isolate;

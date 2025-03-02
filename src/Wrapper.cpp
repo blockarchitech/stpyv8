@@ -11,6 +11,8 @@
 #include "libplatform/libplatform.h"
 
 #include "Context.h"
+#include "Inspector.h"
+
 #include "Utils.h"
 
 
@@ -127,6 +129,22 @@ void CWrapper::Expose(void)
     py::objects::class_value_wrapper<std::shared_ptr<CJavascriptObject>,
     py::objects::make_ptr_instance<CJavascriptObject,
     py::objects::pointer_holder<std::shared_ptr<CJavascriptObject>, CJavascriptObject> > >();
+
+    py::class_<STPyV8::Inspector, boost::noncopyable>("Inspector", py::no_init)
+        .def("__init__",
+            py::make_constructor(
+                +[](v8::Isolate* isolate, v8::Local<v8::Context> context) {
+                    return new STPyV8::Inspector(isolate, context);
+                },
+                py::default_call_policies(),
+                (py::arg("isolate"), py::arg("context"))
+            )
+        )
+        .def("connect_debugger", &STPyV8::Inspector::ConnectDebugger)
+        .def("disconnect_debugger", &STPyV8::Inspector::DisconnectDebugger)
+        .def("send_message", &STPyV8::Inspector::SendMessage)
+        .def("get_next_message", &STPyV8::Inspector::GetNextMessage);
+
 }
 
 void CPythonObject::ThrowIf(v8::Isolate* isolate)

@@ -10,3 +10,5 @@ switch_repo*
 *.pyc
 *.cmake
 .idea
+.venv
+.gcs_entries

@@ -8,31 +8,25 @@
 #include "Wrapper.h"
 #include "Utils.h"
 
-
-class CContext;
-class CIsolate;
-
-typedef std::shared_ptr<CContext> CContextPtr;
-typedef std::shared_ptr<CIsolate> CIsolatePtr;
-
+namespace STPyV8 { class Inspector; }
 
 class CContext
 {
     py::object m_global;
     v8::Persistent<v8::Context> m_context;
+    std::unique_ptr<STPyV8::Inspector> m_inspector;
+
 public:
     CContext(v8::Handle<v8::Context> context);
     CContext(const CContext& context);
     CContext(py::object global);
-
-    ~CContext()
-    {
-        m_context.Reset();
-    }
+    ~CContext();
 
     v8::Handle<v8::Context> Handle(void) const {
         return v8::Local<v8::Context>::New(v8::Isolate::GetCurrent(), m_context);
     }
+    std::string get_debugger_message();
+
 
     py::object GetGlobal(void);
 
@@ -55,6 +49,11 @@ public:
                         int line = -1, int col = -1);
     py::object EvaluateW(const std::wstring& src, const std::wstring name = std::wstring(),
                          int line = -1, int col = -1);
+
+    void InitDebugger(int port = 9229);
+    void DisconnectDebugger();
+    void SendDebuggerMessage(const std::string& message);
+    STPyV8::Inspector* GetInspector() { return m_inspector.get(); }
 
     static py::object GetEntered(void);
     static py::object GetCurrent(void);
